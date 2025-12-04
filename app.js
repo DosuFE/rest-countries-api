@@ -38,12 +38,57 @@ let countries = [];
 // Fetch all countries
 async function fetchCountries() {
     try {
-        const response = await fetch(`${API_URL}/all`);
+        const response = await fetch(`${API_URL}/all?fields=name,population,region,capital,flags,cca3,subregion,tld,currencies,languages,borders`);
+        if (!response.ok) {
+            throw new Error(`API error: ${response.status} ${response.statusText}`);
+        }
         countries = await response.json();
         displayCountries(countries);
     } catch (error) {
         console.error('Error fetching countries:', error);
-        countriesGrid.innerHTML = '<p class="error">Failed to load countries. Please try again later.</p>';
+        // Try a local fallback (data.json) if available — helpful when offline or API blocked
+        try {
+            const localResp = await fetch('data.json');
+            if (!localResp.ok) throw new Error('Local data.json not found');
+            const localData = await localResp.json();
+            countries = localData.map(item => {
+                const currenciesObj = {};
+                if (Array.isArray(item.currencies)) {
+                    item.currencies.forEach(c => {
+                        const key = c.code || c.name || Math.random().toString(36).slice(2,8);
+                        currenciesObj[key] = { name: c.name };
+                    });
+                }
+                const languagesObj = {};
+                if (Array.isArray(item.languages)) {
+                    item.languages.forEach(l => {
+                        const key = l.iso639_1 || l.iso639_2 || Math.random().toString(36).slice(2,8);
+                        languagesObj[key] = l.name || l;
+                    });
+                }
+
+                return {
+                    name: { common: item.name || (item.name?.common) || 'Unknown' },
+                    population: item.population || 0,
+                    region: item.region || item.regionalBlocs || 'N/A',
+                    capital: item.capital ? (Array.isArray(item.capital) ? item.capital : [item.capital]) : (item.capital ? [item.capital] : []),
+                    flags: { svg: item.flags?.svg || item.flag || '' , alt: item.name },
+                    cca3: item.alpha3Code || item.alpha3 || item.cca3 || item.cioc || '',
+                    subregion: item.subregion || '',
+                    tld: item.topLevelDomain || item.tld || [],
+                    currencies: Object.keys(currenciesObj).length ? currenciesObj : (item.currencies || {}),
+                    languages: Object.keys(languagesObj).length ? languagesObj : (item.languages || {}),
+                    borders: item.borders || []
+                };
+            });
+            displayCountries(countries);
+            console.info('Loaded countries from local data.json fallback.');
+            return;
+        } catch (localError) {
+            console.error('Local fallback failed:', localError);
+        }
+
+        countriesGrid.innerHTML = `<p class="error">Failed to load countries: ${error.message}. Please try again later.</p>`;
     }
 }
 
